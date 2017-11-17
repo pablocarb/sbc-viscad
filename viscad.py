@@ -80,6 +80,68 @@ class Promoter(Part):
         self.width = x2 - X1
         self.height = Y2 - y0
 
+def shiftPath(p, x, y):
+    pd = []
+    for i in p:
+        if len(i) >= 2:
+            pd.append( (i[0], i[1]+x, i[2]+y) )
+        else:
+            pd.append( i )
+    pa = []
+    for x in pd:
+        pa.append( x.join(' ') )
+    return pa.join(' ')
+
+class Promoter2(Part):
+    """ Define using path """
+    def __init__(self, x=0, y=0, **kwargs):
+        Part.__init__(self, **kwargs)
+        self.part = []
+        p1 = ( ('M', 31.5, 15.5), ('L', 40, 23), ('L', 31.5, 30.333) )
+        p2 = ( ('M', 10, 50), ('L', 10, 23), ('L', 39, 23) )
+        pd1 = shiftPath(p1, x, y)
+        pd2 = shiftPath(p2, x, y)
+        g = svgwrite.container.Group()
+        g.add( svgwri
+        svgwrite
+            
+        
+        """ Arrow head """
+        x1 = 31.5
+        x2 = 40
+        y0 = 15.5
+        y1 = 23
+        y2 = 30.3333
+        ox = x1-x
+        oy = y2-y
+        points =  [  (x[0]-ox,x[1]-oy) for x in ( (x1, y0), (x2, y1), (x1, y2) ) ]
+        pid = 'proma' + str(self._partid)
+
+        self.part.append( svgwrite.shapes.Polyline(points=points,
+                                            id=pid,fill='none',
+                                            **self.kwargs
+                                        )
+                          )
+        """ Main line """
+        X1 = 10
+        X2 = 39
+        Y1 = 23
+        Y2 = 50
+        ox = x1-x
+        oy = y2-y
+        points = [  (x[0]-ox,x[1]-oy) for x in  ( (X1, Y2), (X1, Y1), (X2, Y1) ) ]
+        pid = 'proml' + str(self._partid)
+
+        self.part.append( svgwrite.shapes.Polyline(points=points,
+                                                   id=pid, fill='none',
+                                                   **self.kwargs
+                                               ))
+
+        self.x = x
+        self.y = y
+        self.width = x2 - X1
+        self.height = Y2 - y0
+
 
 class connect(Part):
     def __init__(self, part1, part2, **kwargs):
