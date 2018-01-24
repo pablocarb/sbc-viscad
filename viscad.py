@@ -3,6 +3,10 @@ from svgwrite import cm, mm
 import xml.etree.ElementTree as ET
 import re
 import math
+import os
+import argparse
+import subprocess
+import sys
 
 
 class Part:
@@ -30,13 +34,6 @@ class Cds(Part):
         y1 = 35
         y2 = 50
         y3 = 65
-#        ox = - x
-#        oy = y2 - y
-#        self.part = [svgwrite.shapes.Polygon(points=points,
-#                                            id=pid,
-#                                            **self.kwargs
-#                                        )]
-#        points = [ (x[0]-ox,x[1]-oy) for x in ( (x1,y3), (x2,y3), (x3,y2), (x2,y1), (x1,y1), (x1,y3) ) ]
         Part.__init__(self, **kwargs)
         self.part = []
         p1 = ( ('M', x1, y3), ('L', x2, y3), ('L', x3, y2), ('L', x2, y1), ('L', x1, y1), ('L', x1, y3), ('Z',) )
@@ -160,26 +157,28 @@ class Rbs:
     pass
 
 
-def readExample():
-    dn = '14'
-    f = '/mnt/syno/shared/Designs/SBCDE000%s/Design/SBCDE000%s_Doe_48lib_v4/SBCDE000%s_Doe_48lib_v4.j0' % (dn,dn,dn)
-    f2 = '/mnt/syno/shared/Designs/SBCDE000%s/Design/SBCDE000%s_Doe_48lib_v4/SBCDE000%s_Doe_48lib_v4.ji0' % (dn,dn,dn)
+def readExample(f, f2):
+    """ Read the DoE file """
+#    dn = '14'
+#    f = '/mnt/syno/shared/Designs/SBCDE000%s/Design/SBCDE000%s_Doe_48lib_v4/SBCDE000%s_Doe_48lib_v4.j0' % (dn,dn,dn)
+#    f2 = '/mnt/syno/shared/Designs/SBCDE000%s/Design/SBCDE000%s_Doe_48lib_v4/SBCDE000%s_Doe_48lib_v4.ji0' % (dn,dn,dn)
     lib = []
     libid = []
     with open(f) as handler:
         for row in handler:
             lib.append( row.rstrip().split('\t') )
-    with open(f2) as handler:
-        for row in handler:
-            line = row.rstrip()
-            ll = []
-            for i in range(0, len(line), 16):
-                pid = re.sub('\s', '', line[i:min(i+16, len(line))])
-                if len(pid) == 0:
-                    ll.append( None )
-                else:
-                    ll.append( pid )
-            libid.append( ll )
+    if os.path.exists(f2):
+        with open(f2) as handler:
+            for row in handler:
+                line = row.rstrip()
+                ll = []
+                for i in range(0, len(line), 16):
+                    pid = re.sub('\s', '', line[i:min(i+16, len(line))])
+                    if len(pid) == 0:
+                        ll.append( None )
+                    else:
+                        ll.append( pid )
+                libid.append( ll )
     return lib, libid
             
 def addConstruct(dwg, construct, base, cell, constructid=None):
@@ -199,7 +198,7 @@ def addConstruct(dwg, construct, base, cell, constructid=None):
         level = int(x[-1])
         w = re.split('([0-9]+)$', x[0])
         ptype = w[0]
-        pnum = math.floor( int(w[1]) / 2 )  - 2
+        pnum = int( math.floor( int(w[1]) / 2 )  - 2 )
         if ptype == 'plasmid':
             prom1 = Promoter(x=len(parts)*cell, y=base, partid=partid)
             parts.append( prom1 )
@@ -244,46 +243,67 @@ def addConstruct(dwg, construct, base, cell, constructid=None):
     parts.append(term1)
     parts.append(conn1)
     return parts
+
+def createCad(f1, f2, outfile):
+    lib, libid = readExample(f1, f2)
+    dwg = svgwrite.Drawing(filename=outfile, debug=True)
+    slot = 100
+    cell = 50
+    i = 1
+    w = cell
+    for i in range(0, len(lib)):
+        construct = lib[i]
+        try:
+            constructid = libid[i]
+        except:
+            constructid = libid
+        parts = addConstruct(dwg, construct, (i+1)*slot, cell, constructid)
+        i += 1
+        for pc in parts:
+            for p in pc.part:
+                dwg.add( p )
+        w = max(w, pc.x+pc.width)                         
+    dwg.viewbox(width=w+cell, height=slot*(i+1))
+    dwg.save()
+
         
-
-lib, libid = readExample()
-fname = 'test/test.svg'
-dwg = svgwrite.Drawing(filename=fname, debug=True)
-slot = 100
-cell = 50
-i = 1
-w = cell
-for i in range(0, len(lib)):
-    construct = lib[i]
-    constructid = libid[i]
-    parts = addConstruct(dwg, construct, (i+1)*slot, cell, constructid)
-    i += 1
-    for pc in parts:
-        for p in pc.part:
-            dwg.add( p )
-    w = max(w, pc.x+pc.width)                         
-dwg.viewbox(width=w+cell, height=slot*(i+1))
-dwg.save()
+def arguments():
+    parser = argparse.ArgumentParser(description='Visual DoE. Pablo Carbonell, SYNBIOCHEM, 2018')
+    parser.add_argument('doeFile', 
+                        help='Input DoE file')
+    parser.add_argument('-i', default=None, 
+                        help='Input DoE file with ICE number')
+    parser.add_argument('-O',  default=None,
+                        help='Output folder (default: same as input)')
+    parser.add_argument('-p', action='store_false',
+                        help='Do not generate pdf')
+    parser.add_argument('-l', default=None,
+                        help='Log file')
+    return parser
 
 
-# base = 40
-# cell = 40
-# cds1 = Cds(x=0, y=base, fill='red')
-# cds2 = Cds(x=2*cell, y=base, fill='blue')
-# cds3 = Cds(x=4*cell, y=base, fill='green')
-# conn1 = connect(cds1, cds2)
-# conn2 = connect(cds2, cds3)
-# term1 = Terminator(x=6*cell, y=base)
-# conn3 = connect(cds3, term1)
-# prom1 = Promoter(x=8*cell, y=base)
-# conn4 = connect(term1, prom1)
-# cds4 = Cds(x=10*cell, y=base, fill='green')
-# conn5 = connect(prom1, cds4)
-# parts = []
-# parts =  [cds1, conn1, cds2, conn2, cds3, term1, conn3, prom1, conn4, cds4, conn5]
-# w = 0
-# for pc in parts:
-#     for p in pc.part:
-#         dwg.add( p )
-#     w = max(w, pc.x+pc.width)
+def runViscad(args=None):
+    parser = arguments()
+    if args is None:
+        arg = parser.parse_args()
+    else:
+        arg = parser.parse_args(args)
+    name = re.sub( '\.[^.]+$', '', os.path.basename(arg.doeFile) )
+    if arg.O is not None:
+        outfile = os.path.join(arg.O, name+'.svg')
+        outpdfile = os.path.join(arg.O, name+'.pdf')
+    else:
+        outfile = os.path.join(os.path.dirname(arg.doeFile), name+'.svg')
+        outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+'.pdf')        
+    createCad(arg.doeFile, arg.i, outfile)
+    if arg.p:
+        p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
+    if arg.l is not None:
+        with open(arg.l, 'a') as handler:
+            if args is None:
+                handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
+            else:
+                handler.write('"viscad.py"'+' '.join(['"{}"'.format(x) for x in args])+'\n')
 
+if __name__ == '__main__':
+    runViscad()
