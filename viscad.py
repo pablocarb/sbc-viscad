@@ -18,6 +18,9 @@ import argparse
 import subprocess
 import sys
 
+RESISTANCE = True
+ORIGIN = True
+
 
 class Part:
     _partid = 0
@@ -176,38 +179,50 @@ class Origin(Part):
         self.height = 24
         self.i = self.x
         self.o = self.x + self.width
-        g.add( svgwrite.text.Text(pid, insert=( self.x, self.y + 40), stroke='none', fill=self.kwargs['stroke']) )
+        g.add( svgwrite.text.Text(pid, insert=( self.x-50, self.y + 40), stroke='none', fill=self.kwargs['stroke']) )
 
 
 class Rbs:
     pass
 
 
-def readExample(f, f2):
+def readExample(f, f2, v2=True):
     """ Read the DoE file """
     lib = []
     libid = []
     with open(f) as handler:
         for row in handler:
             lib.append( row.rstrip().split('\t') )
-    if os.path.exists(f2):
-        with open(f2) as handler:
-            for row in handler:
-                line = row.rstrip()
-                ll = []
-                for i in range(0, len(line), 16):
-                    pid = re.sub('\s', '', line[i:min(i+16, len(line))])
-                    if len(pid) == 0:
-                        ll.append( None )
-                    else:
-                        ll.append( pid )
-                libid.append( ll )
+    if not v2:
+        if os.path.exists(f2):
+            with open(f2) as handler:
+                for row in handler:
+                    line = row.rstrip()
+                    ll = []
+                    for i in range(0, len(line), 16):
+                        pid = re.sub('\s', '', line[i:min(i+16, len(line))])
+                        if len(pid) == 0:
+                            ll.append( None )
+                        else:
+                            ll.append( pid )
+                    libid.append( ll )
+    else:
+        if os.path.exists(f2):
+            with open(f2) as handler:
+                for row in handler:
+                    line = row.rstrip()
+                    ll = line.split('\t')
+                    libid.append( ll )
     return lib, libid
+
             
-def addConstruct(dwg, construct, base, cell, slot, constructid=None):
+def addConstruct(dwg, construct, base, cell, slot, constructid=None, cmap={}):
     parts = []
-    colors = ['red', 'blue', 'green', 'cyan', 'magenta', 'grey', 'lavender', 'darksalmon', 'chartreuse']
-    cid = construct[0]
+    colors = ['red', 'blue', 'green', 'cyan', 'magenta', 'grey', 'lavender', 'darksalmon', 'chartreuse', 'orange']
+    try:
+        cid = constructid[0]
+    except:
+        cid = construct[0]
     title = Title( cid, cell, base+0.5*slot, cell )
     parts.append( title )
     base += slot
@@ -230,13 +245,13 @@ def addConstruct(dwg, construct, base, cell, slot, constructid=None):
             parts.append( prom1 )
             cursor += 1
 
-        if ptype == 'origin':
+        if ptype == 'origin' and ORIGIN:
             pcolor = colors [ level - 1]
             ori1 = Origin(x=cursor*cell, y=base, partid=partid, fill=pcolor)
             parts.append( ori1 )
             cursor += 2
 
-        if ptype == 'resistance':
+        if ptype == 'resistance' and RESISTANCE:
 
             pcolor = colors[ pnum ]
             cds1 = Cds(x=cursor*cell, y=base, partid=partid, fill=pcolor)
@@ -266,8 +281,10 @@ def addConstruct(dwg, construct, base, cell, slot, constructid=None):
                 parts.append(prom1)
                 cursor += 2
         if ptype == 'gene':
-
-            pcolor = colors[ pnum ]
+            if partid in cmap:
+                pcolor = colors[ cmap[partid] % len(colors) ]
+            else:
+                pcolor = colors[ pnum ]
             cds1 = Cds(x=cursor*cell, y=base, partid=partid, fill=pcolor)
             conn1 = connect(parts[-1], cds1)
             parts.append(conn1)
@@ -279,8 +296,24 @@ def addConstruct(dwg, construct, base, cell, slot, constructid=None):
     parts.append(conn1)
     return parts
 
-def createCad(f1, f2, outfile):
-    lib, libid = readExample(f1, f2)
+def mapParts(lib, libid):
+    """ Assign a unique index to each part """
+    cmap = {}
+    for i in range(0, len(lib)):
+        construct = lib[i]
+        try:
+            constructid = libid[i]
+        except:
+            constructid = lib[i]
+        for p in constructid:
+            if p not in cmap:
+                cmap[p] = len(cmap)
+    return cmap
+             
+
+def createCad(f1, f2, outfile, v2=True):
+    lib, libid = readExample(f1, f2, v2)
+    cmap = mapParts(lib,libid)
     dwg = svgwrite.Drawing(filename=outfile, debug=True)
     slot = 100
     cell = 50
@@ -292,7 +325,7 @@ def createCad(f1, f2, outfile):
             constructid = libid[i]
         except:
             constructid = libid
-        parts = addConstruct(dwg, construct, base=(2*i+0.5)*slot, cell=cell, slot=slot, constructid=constructid)
+        parts = addConstruct(dwg, construct, base=(2*i+0.5)*slot, cell=cell, slot=slot, constructid=constructid, cmap=cmap)
         i += 1
         for pc in parts:
             for p in pc.part:
@@ -340,6 +373,8 @@ def arguments():
                         help='Design')
     parser.add_argument('-s', default=10,
                         help='Size')
+    parser.add_argument('-v1', action='store_true',
+                        help='Use version 1 for DoE file with ICE number (for backwards compatibility)')
     return parser
 
 
@@ -356,8 +391,12 @@ def runViscad(args=None, report=False):
     else:
         outfile = os.path.join(os.path.dirname(arg.doeFile), name+'.svg')
         outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+'.pdf')
-    
-    createCad(arg.doeFile, arg.i, outfile)
+    try:
+        v2 = not arg.v1
+    except:
+        v2 = True
+
+    createCad(arg.doeFile, arg.i, outfile, v2)
     if arg.p:
         p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
         if report:
