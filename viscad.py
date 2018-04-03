@@ -192,7 +192,16 @@ def readExample(f, f2, v2=True):
     libid = []
     with open(f) as handler:
         for row in handler:
-            lib.append( row.rstrip().split('\t') )
+            ll = []
+            for x in row.rstrip().split('\t'):
+                # if x.startswith( 'promoter' ):
+                #     a, b = x.split( '_' )
+                #     if re.search( '.*(\d+)', a):
+                #         v = re.search( '.*(\d+)', a).groups()[0]
+                #         if int(v) > 3 and int(b) >=3:
+                #             x = None
+                ll.append( x )
+            lib.append( ll )
     if not v2:
         if os.path.exists(f2):
             with open(f2) as handler:
@@ -209,10 +218,26 @@ def readExample(f, f2, v2=True):
     else:
         if os.path.exists(f2):
             with open(f2) as handler:
+                i = 0
                 for row in handler:
                     line = row.rstrip()
                     ll = line.split('\t')
-                    libid.append( ll )
+                    lli = []
+                    j = 0
+                    for x in lib[i]:
+                        #### PATCH: to be changed by directly reading the excel file ####
+                        y = ll[j]
+                        if x.startswith( 'promoter' ):
+                            a, b = x.split( '_' )
+                            if re.search( '.*(\d+)', a):
+                                v = re.search( '[^\d]*(\d+)$', a).groups()[0]
+                                if int(v) > 3 and int(b) >=3:
+                                    y = None
+                                    j -= 1
+                        j += 1
+                        lli.append( y )
+                    libid.append( lli )
+                    i += 1
     return lib, libid
 
             
@@ -343,7 +368,7 @@ def makeReport(pdfile, design='SBC', size=10):
             for x in mask:
                 line = re.sub('{{'+x+'}}', mask[x], line)
             if line.startswith('\end{document}'):
-                for i in range(0, size / 10):
+                for i in range(0, 1+size / 10):
                     d = ((10 - size) % 10 ) % 10
                     y1 = max(0, 1500*( (size/10) - i ) - d * 1500/10)
                     y2 = 1500*i
@@ -371,14 +396,14 @@ def arguments():
                         help='Report')
     parser.add_argument('-d', default=None,
                         help='Design')
-    parser.add_argument('-s', default=10,
+    parser.add_argument('-s', default=None,
                         help='Size')
     parser.add_argument('-v1', action='store_true',
                         help='Use version 1 for DoE file with ICE number (for backwards compatibility)')
     return parser
 
 
-def runViscad(args=None, report=False):
+def runViscad(args=None):
     parser = arguments()
     if args is None:
         arg = parser.parse_args()
@@ -399,10 +424,11 @@ def runViscad(args=None, report=False):
     createCad(arg.doeFile, arg.i, outfile, v2)
     if arg.p:
         p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
-        if report:
-            makeReport( outpdfile, report['design'], report['size'] )
-        elif arg.r:
-            makeReport( outpdfile, arg.d, int(arg.s) )
+        if arg.r:
+            try:
+                makeReport( outpdfile, arg.d, int(arg.s) )
+            except:
+                pass
             
     if arg.l is not None:
         with open(arg.l, 'a') as handler:
