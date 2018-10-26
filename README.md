@@ -1,2 +1,2 @@
-# sbc-viscad
+# viscad
 CAD tools
