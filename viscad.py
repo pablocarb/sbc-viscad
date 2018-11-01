@@ -305,16 +305,18 @@ def addConstruct(dwg, construct, base, cell, slot, constructid=None, cmap={}):
             else:
                 parts.append(prom1)
                 cursor += 2
+
         if ptype == 'gene':
-            if partid in cmap:
-                pcolor = colors[ cmap[partid] % len(colors) ]
-            else:
-                pcolor = colors[ pnum ]
+#            if partid in cmap:
+#            pcolor = colors[ cmap[partid] % len(colors) ]
+#            else:
+            pcolor = colors[ pnum ]
             cds1 = Cds(x=cursor*cell, y=base, partid=partid, fill=pcolor)
             conn1 = connect(parts[-1], cds1)
             parts.append(conn1)
             parts.append(cds1)
             cursor += 2
+
     term1 = Terminator(x=cursor*cell, y=base)
     conn1 = connect(parts[-1], term1)
     parts.append(term1)
@@ -398,6 +400,8 @@ def arguments():
                         help='Design')
     parser.add_argument('-s', default=None,
                         help='Size')
+    parser.add_argument('-x', default='',
+                        help='Add extension to output files')
     parser.add_argument('-v1', action='store_true',
                         help='Use version 1 for DoE file with ICE number (for backwards compatibility)')
     return parser
@@ -411,11 +415,11 @@ def runViscad(args=None):
         arg = parser.parse_args(args)
     name = re.sub( '\.[^.]+$', '', os.path.basename(arg.doeFile) )
     if arg.O is not None:
-        outfile = os.path.join(arg.O, name+'.svg')
-        outpdfile = os.path.join(arg.O, name+'.pdf')
+        outfile = os.path.join(arg.O, name+arg.x+'.svg')
+        outpdfile = os.path.join(arg.O, name+arg.x+'.pdf')
     else:
-        outfile = os.path.join(os.path.dirname(arg.doeFile), name+'.svg')
-        outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+'.pdf')
+        outfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.svg')
+        outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.pdf')
     try:
         v2 = not arg.v1
     except:
