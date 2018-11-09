@@ -226,14 +226,19 @@ def readExample(f, f2, v2=True):
                     j = 0
                     for x in lib[i]:
                         #### PATCH: to be changed by directly reading the excel file ####
-                        y = ll[j]
+                        try:
+                            y = ll[j]
+                        except:
+                            y = None
                         if x.startswith( 'promoter' ):
                             a, b = x.split( '_' )
                             if re.search( '.*(\d+)', a):
+                                # promoter number
                                 v = re.search( '[^\d]*(\d+)$', a).groups()[0]
                                 if int(v) > 3 and int(b) >=3:
                                     y = None
                                     j -= 1
+                                    continue
                         j += 1
                         lli.append( y )
                     libid.append( lli )
