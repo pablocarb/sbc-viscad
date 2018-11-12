@@ -17,6 +17,7 @@ import os
 import argparse
 import subprocess
 import sys
+import csv
 
 RESISTANCE = True
 ORIGIN = True
@@ -186,10 +187,30 @@ class Rbs:
     pass
 
 
-def readExample(f, f2, v2=True):
+def readExample(f, f2=None, v2=True):
     """ Read the DoE file """
     lib = []
     libid = []
+    # Improved version containing all the information in a single file
+    if f2 is None:
+        with open(f) as h:
+            csr = csv.reader(h)
+            for row in csr:
+                r1 = []
+                r2 = []
+                cid = row[0]
+                r1.append( cid )
+                r2.append( cid )
+                for part in row[1:]:
+                    sbcid, partinfo = part.split(':')
+                    if len(sbcid) == 0:
+                        sbcid = None
+                    r1.append(sbcid)
+                    r2.append(partinfo)
+                lib.append( r2 )
+                libid.append( r1 )
+        return lib, libid
+
     with open(f) as handler:
         for row in handler:
             ll = []
@@ -248,7 +269,7 @@ def readExample(f, f2, v2=True):
             
 def addConstruct(dwg, construct, base, cell, slot, constructid=None, cmap={}):
     parts = []
-    colors = ['red', 'blue', 'green', 'cyan', 'magenta', 'grey', 'lavender', 'darksalmon', 'chartreuse', 'orange']
+    colors = ['red', 'blue', 'green', 'chartreuse', 'magenta', 'grey', 'cyan', 'darksalmon', 'lavender', 'orange']
     try:
         cid = constructid[0]
     except:
@@ -262,14 +283,17 @@ def addConstruct(dwg, construct, base, cell, slot, constructid=None, cmap={}):
             partid = constructid[i]
         except:
             continue
-        if partid is None:
-            cursor += 4
-            continue
         x = construct[i].split('_')
         level = int(x[-1])
         w = re.split('([0-9]+)$', x[0])
         ptype = w[0]
         pnum = int( math.floor( int(w[1]) / 2 )  - 2 )
+        if partid is None:
+            if ptype == 'promoter':
+                cursor += 4
+            else:
+                cursor += 2
+            continue
         if ptype == 'plasmid':
             prom1 = Promoter(x=len(parts)*cell, y=base, partid=partid)
             parts.append( prom1 )
@@ -407,8 +431,8 @@ def arguments():
                         help='Size')
     parser.add_argument('-x', default='',
                         help='Add extension to output files')
-    parser.add_argument('-v1', action='store_true',
-                        help='Use version 1 for DoE file with ICE number (for backwards compatibility)')
+    parser.add_argument('-v2', action='store_true',
+                        help='Use new version with txt file (still not working)')
     return parser
 
 
@@ -426,11 +450,11 @@ def runViscad(args=None):
         outfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.svg')
         outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.pdf')
     try:
-        v2 = not arg.v1
+        v2 = arg.v2
     except:
-        v2 = True
+        v2 = False
 
-    createCad(arg.doeFile, arg.i, outfile, v2)
+    createCad(arg.doeFile, arg.i, outfile, v2=v2)
     if arg.p:
         p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
         if arg.r:
