@@ -7,6 +7,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 
 @author:  Pablo Carbonell, SYNBIOCHEM
 @description: DoE-based pathway libraries visualisation
+@usage: viscad.py design.j0 -i design.txt -v2
 '''
 import svgwrite
 from svgwrite import cm, mm
@@ -267,6 +268,319 @@ def readExample(f, f2=None, v2=True):
     return lib, libid
 
             
+
+def addNewConstruct(dwg, constructIdentifier, construct, base, cell, slot, dlibid, cmap={}):
+    """ Mapping improvement. """
+    parts = []
+    colors = ['red', 'blue', 'green', 'chartreuse', 'magenta', 'grey', 'cyan', 'darksalmon', 'lavender', 'orange']
+    cid = constructIdentifier
+    if cid in dlibid:
+        cid = dlibid[cid]
+    title = Title( cid, cell, base+0.5*slot, cell )
+    parts.append( title )
+    base += slot
+    cursor = 1
+    for i in range(0, len(construct)):
+        try:
+            partid = dlibid[ construct[i] ]
+        except:
+            continue
+        x = construct[i].split('_')
+        level = int(x[-1])
+        w = re.split('([0-9]+)$', x[0])
+        ptype = w[0]
+        pnum = int( math.floor( int(w[1]) / 2 )  - 2 )
+        if partid is None or partid == 'None':
+            if ptype == 'promoter':
+                cursor += 4
+            else:
+                cursor += 2
+            continue
+        if ptype == 'plasmid':
+            prom1 = Promoter(x=len(parts)*cell, y=base, partid=partid)
+            parts.append( prom1 )
+            cursor += 1
+
+        if ptype == 'origin' and ORIGIN:
+            pcolor = colors [ level - 1]
+            ori1 = Origin(x=cursor*cell, y=base, partid=partid, fill=pcolor)
+            parts.append( ori1 )
+            cursor += 2
+
+        if ptype == 'resistance' and RESISTANCE:
+
+            pcolor = colors[ pnum ]
+            cds1 = Cds(x=cursor*cell, y=base, partid=partid, fill=pcolor)
+            conn1 = connect(parts[-1], cds1)
+            parts.append(conn1)
+            parts.append(cds1)
+            cursor += 2
+           
+
+        if ptype == 'promoter':
+            pcolor = colors[ level - 1 ]
+
+            if len(parts) > 1:
+                term1 = Terminator(x=cursor*cell, y=base, stroke=pcolor)
+                conn1 = connect(parts[-1], term1)
+                parts.append(conn1)
+                parts.append(term1)
+                cursor += 2
+
+            prom1 = Promoter(x=cursor*cell, y=base, partid=partid, stroke=pcolor)
+            if len(parts) >= 1:
+                conn1 = connect(parts[-1], prom1)
+                parts.append(conn1)
+                parts.append(prom1)
+                cursor += 2
+            else:
+                parts.append(prom1)
+                cursor += 2
+
+        if ptype == 'gene':
+#            if partid in cmap:
+#            pcolor = colors[ cmap[partid] % len(colors) ]
+#            else:
+            pcolor = colors[ pnum ]
+            cds1 = Cds(x=cursor*cell, y=base, partid=partid, fill=pcolor)
+            conn1 = connect(parts[-1], cds1)
+            parts.append(conn1)
+            parts.append(cds1)
+            cursor += 2
+
+    term1 = Terminator(x=cursor*cell, y=base)
+    conn1 = connect(parts[-1], term1)
+    parts.append(term1)
+    parts.append(conn1)
+    return parts
+
+
+
+def mapnewParts(dlib, dlibid):
+    """ Assign a unique index to each part """
+    cmap = {}
+    for libi in sorted(dlib):
+        try:
+            constructid = dlibid[libi]
+        except:
+            construct = libi
+        cmap[construct] = len(cmap)
+        for p in dlib[libi]:
+            if p not in cmap:
+                cmap[p] = len(cmap)
+    return cmap
+
+
+             
+def createnewCad(f1, f2, outfile, v2=True):
+    f1j0 = re.sub('.txt', '.j0', f1)
+    f1ji0 = re.sub('.j0', '.ji0', f1j0)
+    dlib = readLibrary(f1j0)
+    dlib1 = mapLibrary(dlib, f1ji0)
+    ncmap = mapnewParts(dlib, dlib1)
+    dwg = svgwrite.Drawing(filename=outfile, debug=True)
+    slot = 100
+    cell = 50
+    i = 1
+    w = cell
+    for libi in sorted(dlib):
+        try:
+            constructid = dlib1[libi]
+        except:
+            constructid = libi
+        parts = addNewConstruct(dwg, constructid, construct=dlib[libi], base=(2*i+0.5)*slot,
+                                cell=cell, slot=slot, dlibid=dlib1, cmap=ncmap)
+        i += 1
+        for pc in parts:
+            for p in pc.part:
+                dwg.add( p )
+        w = max(w, pc.x+pc.width)                         
+    dwg.viewbox(width=w+cell, height=slot*(2*i+0.5))
+    dwg.save()
+
+
+def readLibrary(infoFile, abbvr=False):
+    dlib = {}
+    for l in open(infoFile):
+        m = l.rstrip().split('\t')
+        sbcid = m[0]
+        try:
+            sbcid = str(int(re.sub('SBC', '', sbcid)))
+        except:
+            pass
+        mm = []
+        for x in m:
+            if abbvr:
+                x = re.sub('plasmid', 'l', x)
+                x = re.sub('promoter', 'p', x)
+                x = re.sub('gene', 'g', x)
+            mm.append(x)
+        dlib[sbcid] = mm[1:]
+    return dlib
+
+def mapLibrary(dlib, equiv):
+    """ Get the ids of each part. """
+    eqlib = {}
+    for line in open(equiv):
+        construct = []
+        line = line.rstrip()
+        ids = line.split()
+        plasmid = ids[0]
+        l = 16
+        ll = len(ids[1])
+        for i in range(0, len(line)):
+            if line[i:(i+ll)] == ids[1]:
+                break
+        while i < len(line):
+            construct.append( line[i:(i+l)].rstrip() )
+            i += l
+        for j in range(0, len(dlib[plasmid])):
+            try:
+                if construct[j] == '':
+                    construct[j] = 'None'
+                if dlib[plasmid][j] in eqlib and construct[j] == 'None':
+                    # do not update if it is not empty (see comment below)
+                    continue
+                eqlib[dlib[plasmid][j]] = construct[j]
+            except:
+                # This can happen because some parts are removed
+                # in one of the constructs, prioritize assigning 
+                # a value if somewhere happens in the library
+                if dlib[plasmid][j] not in eqlib:
+                    eqlib[dlib[plasmid][j]] = 'None'
+            
+    return eqlib
+
+
+
+def makeReport(pdfile, design='SBC', size=10):
+    texfile = re.sub('\.pdf$', '_report.tex', pdfile)
+    mask = {'design': design, 'comment': 'Library size={}'.format(size)}
+    with open('template.tex') as handler, open(texfile, 'w') as h2:
+        for line in handler:
+            for x in mask:
+                line = re.sub('{{'+x+'}}', mask[x], line)
+            if line.startswith('\end{document}'):
+                for i in range(0, 1+size / 10):
+                    d = ((10 - size) % 10 ) % 10
+                    y1 = max(0, 1500*( (size/10) - i ) - d * 1500/10)
+                    y2 = 1500*i
+                    tx = '\\includegraphics[width=\\textwidth, trim={{ 0 {y1} 0 {y2} }}, clip]{{{pdf}}}\n'
+                    h2.write(tx.format(y1=y1,
+                                       y2=y2,
+                                       pdf=os.path.basename(pdfile)))
+            h2.write( line )
+    p = subprocess.Popen( ['pdflatex', os.path.abspath(texfile)], cwd=os.path.dirname( pdfile ) )
+            
+
+def arguments():
+    parser = argparse.ArgumentParser(description='Visual DoE. Pablo Carbonell, SYNBIOCHEM, 2018')
+    parser.add_argument('doeFile', 
+                        help='Input DoE file')
+    parser.add_argument('-i', default=None, 
+                        help='Input DoE file with ICE number')
+    parser.add_argument('-O',  default=None,
+                        help='Output folder (default: same as input)')
+    parser.add_argument('-p', action='store_false',
+                        help='Do not generate pdf')
+    parser.add_argument('-l', default=None,
+                        help='Log file')
+    parser.add_argument('-r', action='store_true',
+                        help='Report')
+    parser.add_argument('-d', default=None,
+                        help='Design')
+    parser.add_argument('-s', default=None,
+                        help='Size')
+    parser.add_argument('-x', default='',
+                        help='Add extension to output files')
+    parser.add_argument('-v2', action='store_true',
+                        help='Use new version with txt file (still not working)')
+    return parser
+
+
+def runViscad(args=None):
+    parser = arguments()
+    if args is None:
+        arg = parser.parse_args()
+    else:
+        arg = parser.parse_args(args)
+    name = re.sub( '\.[^.]+$', '', os.path.basename(arg.doeFile) )
+    if arg.O is not None:
+        outfile = os.path.join(arg.O, name+arg.x+'.svg')
+        outpdfile = os.path.join(arg.O, name+arg.x+'.pdf')
+    else:
+        outfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.svg')
+        outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.pdf')
+    try:
+        v2 = arg.v2
+    except:
+        v2 = False
+
+    createnewCad(arg.doeFile, arg.i, outfile, v2=v2)
+    if arg.p:
+        p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
+        if arg.r:
+            try:
+                makeReport( outpdfile, arg.d, int(arg.s) )
+            except:
+                pass
+            
+    if arg.l is not None:
+        with open(arg.l, 'a') as handler:
+            if args is None:
+                handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
+            else:
+                handler.write('"viscad.py"'+' '.join(['"{}"'.format(x) for x in args])+'\n')
+
+if __name__ == '__main__':
+    runViscad()
+
+
+#########################
+
+# Previous version of the code: it had some issues with file parsing
+
+def createCad(f1, f2, outfile, v2=True):
+    lib, libid = readExample(f1, f2, v2)
+    cmap = mapParts(lib,libid)
+
+    dwg = svgwrite.Drawing(filename=outfile, debug=True)
+    slot = 100
+    cell = 50
+    i = 1
+    w = cell
+    for i in range(0, len(lib)):
+        construct = lib[i]
+        try:
+            constructid = libid[i]
+        except:
+            constructid = libid
+            
+        parts = addConstruct(dwg, construct, base=(2*i+0.5)*slot, cell=cell, slot=slot, constructid=constructid, cmap=cmap)
+        i += 1
+        for pc in parts:
+            for p in pc.part:
+                dwg.add( p )
+        w = max(w, pc.x+pc.width)                         
+    dwg.viewbox(width=w+cell, height=slot*(2*i+0.5))
+    dwg.save()
+
+
+def mapParts(lib, libid):
+    """ Assign a unique index to each part """
+    cmap = {}
+    for i in range(0, len(lib)):
+        construct = lib[i]
+        try:
+            constructid = libid[i]
+        except:
+            constructid = lib[i]
+        for p in constructid:
+            if p not in cmap:
+                cmap[p] = len(cmap)
+    return cmap
+
+
 def addConstruct(dwg, construct, base, cell, slot, constructid=None, cmap={}):
     parts = []
     colors = ['red', 'blue', 'green', 'chartreuse', 'magenta', 'grey', 'cyan', 'darksalmon', 'lavender', 'orange']
@@ -351,124 +665,3 @@ def addConstruct(dwg, construct, base, cell, slot, constructid=None, cmap={}):
     parts.append(term1)
     parts.append(conn1)
     return parts
-
-def mapParts(lib, libid):
-    """ Assign a unique index to each part """
-    cmap = {}
-    for i in range(0, len(lib)):
-        construct = lib[i]
-        try:
-            constructid = libid[i]
-        except:
-            constructid = lib[i]
-        for p in constructid:
-            if p not in cmap:
-                cmap[p] = len(cmap)
-    return cmap
-             
-
-def createCad(f1, f2, outfile, v2=True):
-    lib, libid = readExample(f1, f2, v2)
-    cmap = mapParts(lib,libid)
-    dwg = svgwrite.Drawing(filename=outfile, debug=True)
-    slot = 100
-    cell = 50
-    i = 1
-    w = cell
-    for i in range(0, len(lib)):
-        construct = lib[i]
-        try:
-            constructid = libid[i]
-        except:
-            constructid = libid
-        parts = addConstruct(dwg, construct, base=(2*i+0.5)*slot, cell=cell, slot=slot, constructid=constructid, cmap=cmap)
-        i += 1
-        for pc in parts:
-            for p in pc.part:
-                dwg.add( p )
-        w = max(w, pc.x+pc.width)                         
-    dwg.viewbox(width=w+cell, height=slot*(2*i+0.5))
-    dwg.save()
-
-
-def makeReport(pdfile, design='SBC', size=10):
-    texfile = re.sub('\.pdf$', '_report.tex', pdfile)
-    mask = {'design': design, 'comment': 'Library size={}'.format(size)}
-    with open('template.tex') as handler, open(texfile, 'w') as h2:
-        for line in handler:
-            for x in mask:
-                line = re.sub('{{'+x+'}}', mask[x], line)
-            if line.startswith('\end{document}'):
-                for i in range(0, 1+size / 10):
-                    d = ((10 - size) % 10 ) % 10
-                    y1 = max(0, 1500*( (size/10) - i ) - d * 1500/10)
-                    y2 = 1500*i
-                    tx = '\\includegraphics[width=\\textwidth, trim={{ 0 {y1} 0 {y2} }}, clip]{{{pdf}}}\n'
-                    h2.write(tx.format(y1=y1,
-                                       y2=y2,
-                                       pdf=os.path.basename(pdfile)))
-            h2.write( line )
-    p = subprocess.Popen( ['pdflatex', os.path.abspath(texfile)], cwd=os.path.dirname( pdfile ) )
-            
-
-def arguments():
-    parser = argparse.ArgumentParser(description='Visual DoE. Pablo Carbonell, SYNBIOCHEM, 2018')
-    parser.add_argument('doeFile', 
-                        help='Input DoE file')
-    parser.add_argument('-i', default=None, 
-                        help='Input DoE file with ICE number')
-    parser.add_argument('-O',  default=None,
-                        help='Output folder (default: same as input)')
-    parser.add_argument('-p', action='store_false',
-                        help='Do not generate pdf')
-    parser.add_argument('-l', default=None,
-                        help='Log file')
-    parser.add_argument('-r', action='store_true',
-                        help='Report')
-    parser.add_argument('-d', default=None,
-                        help='Design')
-    parser.add_argument('-s', default=None,
-                        help='Size')
-    parser.add_argument('-x', default='',
-                        help='Add extension to output files')
-    parser.add_argument('-v2', action='store_true',
-                        help='Use new version with txt file (still not working)')
-    return parser
-
-
-def runViscad(args=None):
-    parser = arguments()
-    if args is None:
-        arg = parser.parse_args()
-    else:
-        arg = parser.parse_args(args)
-    name = re.sub( '\.[^.]+$', '', os.path.basename(arg.doeFile) )
-    if arg.O is not None:
-        outfile = os.path.join(arg.O, name+arg.x+'.svg')
-        outpdfile = os.path.join(arg.O, name+arg.x+'.pdf')
-    else:
-        outfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.svg')
-        outpdfile = os.path.join(os.path.dirname(arg.doeFile), name+arg.x+'.pdf')
-    try:
-        v2 = arg.v2
-    except:
-        v2 = False
-
-    createCad(arg.doeFile, arg.i, outfile, v2=v2)
-    if arg.p:
-        p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
-        if arg.r:
-            try:
-                makeReport( outpdfile, arg.d, int(arg.s) )
-            except:
-                pass
-            
-    if arg.l is not None:
-        with open(arg.l, 'a') as handler:
-            if args is None:
-                handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
-            else:
-                handler.write('"viscad.py"'+' '.join(['"{}"'.format(x) for x in args])+'\n')
-
-if __name__ == '__main__':
-    runViscad()
