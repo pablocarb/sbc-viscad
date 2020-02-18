@@ -21,6 +21,8 @@ import argparse
 import subprocess
 import sys
 import csv
+import pandas as pd
+import numpy as np
 
 RESISTANCE = True
 ORIGIN = True
@@ -271,7 +273,7 @@ def readExample(f, f2=None, v2=True):
 
             
 
-def addNewConstruct(dwg, constructIdentifier, construct, base, cell, slot, dlibid, cmap={}):
+def addNewConstruct(dwg, constructIdentifier, construct, base, cell, slot, dlibid, cmap={}, cv=False):
     """ Mapping improvement. """
     parts = []
     colors = ['red', 'blue', 'green', 'chartreuse', 'magenta', 'grey', 'cyan', 'darksalmon', 'lavender', 'orange']
@@ -343,7 +345,10 @@ def addNewConstruct(dwg, constructIdentifier, construct, base, cell, slot, dlibi
 #            if partid in cmap:
 #            pcolor = colors[ cmap[partid] % len(colors) ]
 #            else:
-            pcolor = colors[ pnum ]
+            if cv:
+                pcolor = colors[ (pnum + level - 1 ) % len(colors)]
+            else:
+                pcolor = colors[ pnum ]
             cds1 = Cds(x=cursor*cell, y=base, partid=partid, fill=pcolor)
             conn1 = connect(parts[-1], cds1)
             parts.append(conn1)
@@ -373,12 +378,38 @@ def mapnewParts(dlib, dlibid):
     return cmap
 
 
+def fromDesign(M):
+    dlib1 = {}
+    df = pd.DataFrame(M)
+    for j in np.arange(3,df.shape[1],2):
+        n = len( df.iloc[:,j].unique() )
+        for z in np.arange(n/2,n):
+            dlib1['promoter{}_{}'.format(j+2,int(z)+1)] = None
+    dlib = {}
+    for i in np.arange(M.shape[0]):
+        plasmid = []
+        plasmid.append( 'origin{}_{}'.format(1,int(M[i,0]+1) ) )
+        plasmid.append( 'resistance{}_{}'.format(2,1) )
+        for j in np.arange(1,M.shape[1],2):
+            plasmid.append( 'promoter{}_{}'.format(j+2,int(M[i,j]+1) ) )
+            plasmid.append( 'gene{}_{}'.format(j+3,int(M[i,j]+1) ) )
+        dlib[ 'PLASMID%02d' % (i+1,) ] = plasmid
+    for p in dlib:
+        for x in dlib[p]:
+            if x not in dlib1:
+                dlib1[x] = x
+    return dlib, dlib1
+    
+        
              
-def createnewCad(f1, f2, outfile, v2=True):
-    f1j0 = re.sub('.txt', '.j0', f1)
-    f1ji0 = re.sub('.j0', '.ji0', f1j0)
-    dlib = readLibrary(f1j0)
-    dlib1 = mapLibrary(dlib, f1ji0)
+def createnewCad(f1=None, f2=None, outfile=None, v2=True, M=None, colvariants=False):
+    if M is None:
+        f1j0 = re.sub('.txt', '.j0', f1)
+        f1ji0 = re.sub('.j0', '.ji0', f1j0)
+        dlib = readLibrary(f1j0)
+        dlib1 = mapLibrary(dlib, f1ji0)
+    else:
+        dlib, dlib1 = fromDesign(M)
     ncmap = mapnewParts(dlib, dlib1)
     dwg = svgwrite.Drawing(filename=outfile, debug=True)
     slot = 100
@@ -391,7 +422,7 @@ def createnewCad(f1, f2, outfile, v2=True):
         except:
             constructid = libi
         parts = addNewConstruct(dwg, constructid, construct=dlib[libi], base=(2*i+0.5)*slot,
-                                cell=cell, slot=slot, dlibid=dlib1, cmap=ncmap)
+                                cell=cell, slot=slot, dlibid=dlib1, cmap=ncmap, cv=colvariants)
         i += 1
         for pc in parts:
             for p in pc.part:
@@ -478,6 +509,10 @@ def makeReport(pdfile, design='SBC', size=10):
             h2.write( line )
     p = subprocess.Popen( ['pdflatex', os.path.abspath(texfile)], cwd=os.path.dirname( pdfile ) )
             
+def makePDF(outfile, outpdfile):
+    drawing = svg2rlg(outfile)
+    renderPDF.drawToFile(drawing, outpdfile)
+
 
 def arguments():
     parser = argparse.ArgumentParser(description='Visual DoE. Pablo Carbonell, SYNBIOCHEM, 2018')
@@ -522,10 +557,9 @@ def runViscad(args=None):
     except:
         v2 = False
 
-    createnewCad(arg.doeFile, arg.i, outfile, v2=v2)
+    createnewCad(f1=arg.doeFile, f2=arg.i, outfile=outfile, v2=v2)
     if arg.p:
-        drawing = svg2rlg(outfile)
-        renderPDF.drawToFile(drawing, outpdfile)
+        makePDF(outfile, outpdfile)
         if arg.r:
             try:
                 makeReport( outpdfile, arg.d, int(arg.s) )
