@@ -12,6 +12,8 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 import svgwrite
 from svgwrite import cm, mm
 import xml.etree.ElementTree as ET
+from reportlab.graphics import renderPDF
+from svglib.svglib import svg2rlg
 import re
 import math
 import os
@@ -361,7 +363,7 @@ def mapnewParts(dlib, dlibid):
     cmap = {}
     for libi in sorted(dlib):
         try:
-            constructid = dlibid[libi]
+            construct = dlibid[libi]
         except:
             construct = libi
         cmap[construct] = len(cmap)
@@ -428,11 +430,15 @@ def mapLibrary(dlib, equiv):
         plasmid = ids[0]
         l = 16
         ll = len(ids[1])
+        entry = str('{:>'+str(l)+'}').format(ids[1])
         for i in range(0, len(line)):
-            if line[i:(i+ll)] == ids[1]:
+            if line[i:(i+l)] == entry:
                 break
+#        for i in range(0, len(line)):
+#            if line[i:(i+ll)] == ids[1]:
+#                break
         while i < len(line):
-            construct.append( line[i:(i+l)].rstrip() )
+            construct.append( line[i:(i+l)].rstrip().lstrip() )
             i += l
         for j in range(0, len(dlib[plasmid])):
             try:
@@ -518,7 +524,8 @@ def runViscad(args=None):
 
     createnewCad(arg.doeFile, arg.i, outfile, v2=v2)
     if arg.p:
-        p = subprocess.call( ['/usr/bin/inkscape', outfile, '-A', outpdfile] )
+        drawing = svg2rlg(outfile)
+        renderPDF.drawToFile(drawing, outpdfile)
         if arg.r:
             try:
                 makeReport( outpdfile, arg.d, int(arg.s) )
